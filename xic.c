@@ -119,7 +119,7 @@ main (int argc, char *argv[])
     change_window_icon (dpy, &win, icon_file);
     fclose (icon_file);
 
-    if (strcmp ("-t", argv[2]) == 0)
+    if (argc > 2 && strcmp ("-t", argv[2]) == 0)
     {
         int i, currsize = 0;
         for (i=3;i<argc;i++)
