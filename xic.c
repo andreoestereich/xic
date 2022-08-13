@@ -1,23 +1,12 @@
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
-#include <errno.h>
 #include <gd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-typedef unsigned char uchar;
-
-void
-window_name (Display *display, Window window)
-{
-    int i;
-
-    XTextProperty text;
-    XGetWMName (display, window, &text);
-    printf ("id=0x%lx, XGetWMName=\"%s\"\n", window, text.value);
-}
+#define MAX_TITLE_SIZE 100
 
 void
 die (const char *errstr, ...)
@@ -31,20 +20,23 @@ die (const char *errstr, ...)
 }
 
 void
-change_window_icon (Display *dpy, Window *win, FILE *incon_file)
+usage()
 {
-    Atom request;
-    Atom netwmicon;
-    // pid_t thispid = getpid();
+    printf ("xic ICON_FILE [-t new window title]\n");
+    exit (0);
+}
 
-    request = XInternAtom (dpy, "_NET_ACTIVE_WINDOW", False);
+void
+change_window_icon (Display *dpy, Window *win, FILE *icon_file)
+{
+    Atom netwmicon;
 
     /* use a png-image to set _NET_WM_ICON */
     /* load image in rgba-format */
-    const gdImagePtr icon_rgba = gdImageCreateFromPng (incon_file);
+    const gdImagePtr icon_rgba = gdImageCreateFromPng (icon_file);
     if (!icon_rgba)
         {
-            fclose (incon_file);
+            fclose (icon_file);
             die ("Faled to load image from file.\n");
         }
     /* declare icon-variable which will store the image in argb-format */
@@ -76,29 +68,46 @@ change_window_icon (Display *dpy, Window *win, FILE *incon_file)
     /* set _NET_WM_ICON */
     netwmicon = XInternAtom (dpy, "_NET_WM_ICON", False);
     XChangeProperty (dpy, *win, netwmicon, XA_CARDINAL, 32, PropModeReplace,
-                                     (uchar *)icon_argb, icon_n);
+                                     (unsigned char *)icon_argb, icon_n);
 
-    XSync (dpy, False);
 }
+
+void
+change_window_name (Display *dpy, Window *win, char *name)
+{
+    Atom netwmname = XInternAtom (dpy, "_NET_WM_NAME", False);
+    Atom atom_str = XInternAtom (dpy, "STRING", False);
+
+    XChangeProperty (dpy, *win, netwmname, atom_str, 8, PropModeReplace,
+                                     (unsigned char *)name, strlen(name));
+
+}
+
+void
+window_name (Display *display, Window window)
+{
+    XTextProperty text;
+    XGetWMName (display, window, &text);
+    printf ("id=0x%lx, XGetWMName=\"%s\"\n", window, text.value);
+}
+
 
 int
 main (int argc, char *argv[])
 {
-    if (argc != 2)
-        die ("A single argument is expected.\n");
-    if (strcmp ("-h", argv[1]) == 0)
-        {
-            printf ("xic ICON_FILE\n");
-            return 0;
-        }
-
-    FILE *incon_file = fopen (argv[1], "r");
-    if (!incon_file)
-        die ("Argument is not a file.\n");
-
     Display *dpy;
     Window win;
-    int revert_to;
+    int revert_to, opt;
+    char new_title[MAX_TITLE_SIZE] = "";
+
+    if (argc < 2)
+        die ("At least a single argument is expected.\n");
+    if (strcmp ("-h", argv[1]) == 0)
+        usage();
+
+    FILE *icon_file = fopen (argv[1], "r");
+    if (!icon_file)
+        die ("First argument is not a file.\n");
 
     if (!(dpy = XOpenDisplay (NULL)))
         die ("can't open display\n");
@@ -107,7 +116,23 @@ main (int argc, char *argv[])
     if (win == None)
         die ("No focused window.\n");
 
-    change_window_icon (dpy, &win, incon_file);
+    change_window_icon (dpy, &win, icon_file);
+    fclose (icon_file);
 
-    fclose (incon_file);
+    if (strcmp ("-t", argv[2]) == 0)
+    {
+        int i, currsize = 0;
+        for (i=3;i<argc;i++)
+        {
+            currsize += strlen(argv[i])+1;
+            if (currsize < MAX_TITLE_SIZE)
+            {
+                strcat (new_title, argv[i]);
+                strcat (new_title, " ");
+            }
+        }
+        change_window_name(dpy, &win, new_title);
+    }
+
+    XSync (dpy, False);
 }
